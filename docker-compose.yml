@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: threepl
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  tileserver:
+    image: maptiler/tileserver-gl
+    profiles: ['tiles']
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./data/tiles:/data
+  nominatim:
+    image: mediagis/nominatim:4.4
+    profiles: ['geocode']
+    environment:
+      PBF_URL: https://download.geofabrik.de/north-america/us/california-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/north-america/us/california-updates/
+      NOMINATIM_PASSWORD: nominatim
+    ports:
+      - '7070:8080'
+volumes:
+  pgdata:

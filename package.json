@@ -1,0 +1,35 @@
+{
+  "name": "3pl-2.0",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:migrate": "psql $DATABASE_URL -v ON_ERROR_STOP=1 -f db/migrations/001_init.sql",
+    "ingest": "tsx scripts/ingest.ts",
+    "ingest:delta": "tsx scripts/ingest.ts --delta",
+    "worker": "tsx scripts/worker.ts"
+  },
+  "dependencies": {
+    "@types/pg": "^8.10.9",
+    "lru-cache": "^10.2.2",
+    "maplibre-gl": "^4.7.1",
+    "next": "14.2.5",
+    "playwright": "^1.47.0",
+    "pg": "^8.12.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "slugify": "^1.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.6",
+    "tsx": "^4.15.6",
+    "typescript": "^5.5.3"
+  }
+}
