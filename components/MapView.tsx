@@ -22,6 +22,11 @@ export type ListingPoint = {
 };
 
 const styleUrl = process.env.NEXT_PUBLIC_TILE_STYLE_URL ?? 'https://demotiles.maplibre.org/style.json';
+const usBounds: maplibregl.LngLatBoundsLike = [
+  [-126.5, 24.4],
+  [-66.5, 49.5]
+];
+const overlaySourceId = 'openmaptiles';
 
 export default function MapView({
   listings,
@@ -39,12 +44,61 @@ export default function MapView({
       container: containerRef.current,
       style: styleUrl,
       center: [-98.5795, 39.8283],
-      zoom: 3
+      zoom: 3,
+      minZoom: 3,
+      maxBounds: usBounds,
+      renderWorldCopies: false
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
     map.on('load', () => {
+      if (!map.getSource(overlaySourceId)) {
+        map.addSource(overlaySourceId, {
+          type: 'vector',
+          url: 'https://demotiles.maplibre.org/tiles/tiles.json'
+        });
+      }
+
+      if (!map.getLayer('state-boundaries')) {
+        map.addLayer({
+          id: 'state-boundaries',
+          type: 'line',
+          source: overlaySourceId,
+          'source-layer': 'boundary',
+          minzoom: 4,
+          filter: ['all', ['==', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
+          paint: {
+            'line-color': '#94a3b8',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.5, 7, 1.5],
+            'line-opacity': 0.7
+          }
+        });
+      }
+
+      if (!map.getLayer('city-labels')) {
+        map.addLayer({
+          id: 'city-labels',
+          type: 'symbol',
+          source: overlaySourceId,
+          'source-layer': 'place',
+          minzoom: 5,
+          filter: ['in', ['get', 'class'], ['literal', ['city', 'town']]],
+          layout: {
+            'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 10, 16],
+            'text-font': ['Open Sans Bold', 'Noto Sans Bold'],
+            'text-offset': [0, 0.6],
+            'text-allow-overlap': false
+          },
+          paint: {
+            'text-color': '#0f172a',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.2
+          }
+        });
+      }
+
       const bounds = map.getBounds();
       onBboxChange(`${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`);
     });
