@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import maplibregl, { Map } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -27,6 +27,24 @@ const usBounds: maplibregl.LngLatBoundsLike = [
   [-66.5, 49.5]
 ];
 const overlaySourceId = 'openmaptiles';
+const listingsSourceId = 'listings';
+
+type ListingGeoJson = {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: {
+      type: 'Point';
+      coordinates: [number, number];
+    };
+    properties: {
+      id: number;
+      name: string;
+      slug: string;
+      sponsored: boolean;
+    };
+  }>;
+};
 
 export default function MapView({
   listings,
@@ -37,6 +55,26 @@ export default function MapView({
 }) {
   const mapRef = useRef<Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const pendingGeoJsonRef = useRef<ListingGeoJson | null>(null);
+
+  const listingGeoJson = useMemo<ListingGeoJson>(() => {
+    return {
+      type: 'FeatureCollection',
+      features: listings.map((listing) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [listing.longitude, listing.latitude]
+        },
+        properties: {
+          id: listing.id,
+          name: listing.name,
+          slug: listing.slug,
+          sponsored: listing.sponsorship_status === 'active'
+        }
+      }))
+    };
+  }, [listings]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -99,8 +137,81 @@ export default function MapView({
         });
       }
 
+      if (!map.getSource(listingsSourceId)) {
+        map.addSource(listingsSourceId, {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: []
+          },
+          cluster: true,
+          clusterRadius: 50,
+          clusterMaxZoom: 12
+        });
+
+        map.addLayer({
+          id: 'clusters',
+          type: 'circle',
+          source: listingsSourceId,
+          filter: ['has', 'point_count'],
+          paint: {
+            'circle-color': '#94a3b8',
+            'circle-radius': ['step', ['get', 'point_count'], 16, 50, 24, 200, 32],
+            'circle-opacity': 0.8
+          }
+        });
+
+        map.addLayer({
+          id: 'cluster-count',
+          type: 'symbol',
+          source: listingsSourceId,
+          filter: ['has', 'point_count'],
+          layout: {
+            'text-field': '{point_count_abbreviated}',
+            'text-size': 12
+          },
+          paint: {
+            'text-color': '#0f172a'
+          }
+        });
+
+        map.addLayer({
+          id: 'unclustered',
+          type: 'circle',
+          source: listingsSourceId,
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-color': [
+              'case',
+              ['==', ['get', 'sponsored'], true],
+              '#f59e0b',
+              '#2563eb'
+            ],
+            'circle-radius': 6,
+            'circle-stroke-width': 1,
+            'circle-stroke-color': '#ffffff'
+          }
+        });
+
+        map.on('click', 'unclustered', (event) => {
+          const feature = event.features?.[0];
+          if (!feature) return;
+          const slug = feature.properties?.slug;
+          if (slug) {
+            window.location.href = `/listing/${slug}`;
+          }
+        });
+      }
+
       const bounds = map.getBounds();
       onBboxChange(`${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`);
+
+      const pendingGeoJson = pendingGeoJsonRef.current;
+      if (pendingGeoJson) {
+        const source = map.getSource(listingsSourceId) as maplibregl.GeoJSONSource | undefined;
+        source?.setData(pendingGeoJson);
+        pendingGeoJsonRef.current = null;
+      }
     });
 
     map.on('moveend', () => {
@@ -118,91 +229,13 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    const sourceId = 'listings';
-    const geojson = {
-      type: 'FeatureCollection' as const,
-      features: listings.map((listing) => ({
-        type: 'Feature' as const,
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [listing.longitude, listing.latitude]
-        },
-        properties: {
-          id: listing.id,
-          name: listing.name,
-          slug: listing.slug,
-          sponsored: listing.sponsorship_status === 'active'
-        }
-      }))
-    };
-
-    if (map.getSource(sourceId)) {
-      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
-      source.setData(geojson);
+    const source = map.getSource(listingsSourceId) as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(listingGeoJson);
     } else {
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: geojson,
-        cluster: true,
-        clusterRadius: 40,
-        clusterMaxZoom: 10
-      });
-
-      map.addLayer({
-        id: 'clusters',
-        type: 'circle',
-        source: sourceId,
-        filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': '#94a3b8',
-          'circle-radius': ['step', ['get', 'point_count'], 16, 50, 24, 200, 32],
-          'circle-opacity': 0.8
-        }
-      });
-
-      map.addLayer({
-        id: 'cluster-count',
-        type: 'symbol',
-        source: sourceId,
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': '{point_count_abbreviated}',
-          'text-size': 12
-        },
-        paint: {
-          'text-color': '#0f172a'
-        }
-      });
-
-      map.addLayer({
-        id: 'unclustered',
-        type: 'circle',
-        source: sourceId,
-        filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': [
-            'case',
-            ['==', ['get', 'sponsored'], true],
-            '#f59e0b',
-            '#2563eb'
-          ],
-          'circle-radius': 6,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#ffffff'
-        }
-      });
-
-      map.on('click', 'unclustered', (event) => {
-        const feature = event.features?.[0];
-        if (!feature) return;
-        const slug = feature.properties?.slug;
-        if (slug) {
-          window.location.href = `/listing/${slug}`;
-        }
-      });
+      pendingGeoJsonRef.current = listingGeoJson;
     }
-  }, [listings]);
+  }, [listingGeoJson]);
 
   return <div ref={containerRef} className="flex-1" />;
 }
